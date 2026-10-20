@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fetchExamData, type QuestionRecord } from '../src/fetchExamData';
 import type { ExamRoute } from '../src/parseExamRoute';
 
-const karimen10: ExamRoute = { examType: 'karimen', examId: '10', locale: 'en' };
-const honmen3: ExamRoute = { examType: 'honmen', examId: '3', locale: 'en' };
-const gentsuki1: ExamRoute = { examType: 'gentsuki', examId: '1', locale: 'en' };
+const karimen10: ExamRoute = { examType: 'karimen', examId: '10' };
+const honmen3: ExamRoute = { examType: 'honmen', examId: '3' };
+const gentsuki1: ExamRoute = { examType: 'gentsuki', examId: '1' };
 
 const fixtureRaw = [
   {
@@ -71,40 +71,31 @@ beforeEach(() => {
 });
 
 describe('fetchExamData — URL construction', () => {
-  it('constructs /en/exam/karimen/10/exam.json', async () => {
+  it('constructs /karimen/exams/10/exam.json', async () => {
     const spy = mockFetch(200, fixtureRaw);
     vi.stubGlobal('fetch', spy);
 
     await fetchExamData(karimen10);
 
-    expect(spy).toHaveBeenCalledWith('/en/exam/karimen/10/exam.json');
+    expect(spy).toHaveBeenCalledWith('/karimen/exams/10/exam.json');
   });
 
-  it('constructs /en/exam/honmen/3/exam.json', async () => {
+  it('constructs /honmen/exams/3/exam.json', async () => {
     const spy = mockFetch(200, fixtureRaw);
     vi.stubGlobal('fetch', spy);
 
     await fetchExamData(honmen3);
 
-    expect(spy).toHaveBeenCalledWith('/en/exam/honmen/3/exam.json');
+    expect(spy).toHaveBeenCalledWith('/honmen/exams/3/exam.json');
   });
 
-  it('constructs /en/exam/gentsuki/1/exam.json', async () => {
+  it('constructs /gentsuki/exams/1/exam.json', async () => {
     const spy = mockFetch(200, fixtureRaw);
     vi.stubGlobal('fetch', spy);
 
     await fetchExamData(gentsuki1);
 
-    expect(spy).toHaveBeenCalledWith('/en/exam/gentsuki/1/exam.json');
-  });
-
-  it('constructs /exam/karimen/10/exam.json when no locale', async () => {
-    const spy = mockFetch(200, fixtureRaw);
-    vi.stubGlobal('fetch', spy);
-
-    await fetchExamData({ examType: 'karimen', examId: '10' });
-
-    expect(spy).toHaveBeenCalledWith('/exam/karimen/10/exam.json');
+    expect(spy).toHaveBeenCalledWith('/gentsuki/exams/1/exam.json');
   });
 });
 
