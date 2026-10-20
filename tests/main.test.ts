@@ -1,4 +1,9 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../src/injectButton", () => ({
+  setupObserver: vi.fn(),
+}));
 
 describe("main", () => {
   it("runs without throwing", async () => {
