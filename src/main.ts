@@ -1,5 +1,5 @@
-function main(): void {
-  // entry point — wired in subsequent issues
+export function main(): void {
+  console.log("[karimen-anki-exporter] loaded");
 }
 
 main();

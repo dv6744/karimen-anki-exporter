@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --outfile=dist/karimen-anki-exporter.user.js",
+    "build": "node build.mjs",
     "test": "vitest run"
   },
   "devDependencies": {
