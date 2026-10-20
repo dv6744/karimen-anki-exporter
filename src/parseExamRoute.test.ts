@@ -6,6 +6,15 @@ describe('parseExamRoute', () => {
     expect(parseExamRoute('https://karimen-honmen.com/exam/karimen/10')).toEqual({
       examType: 'karimen',
       examId: '10',
+      locale: undefined,
+    });
+  });
+
+  it('returns karimen route for /en/exam/karimen/10 (locale prefix)', () => {
+    expect(parseExamRoute('https://karimen-honmen.com/en/exam/karimen/10')).toEqual({
+      examType: 'karimen',
+      examId: '10',
+      locale: 'en',
     });
   });
 
@@ -13,6 +22,7 @@ describe('parseExamRoute', () => {
     expect(parseExamRoute('https://karimen-honmen.com/exam/honmen/3')).toEqual({
       examType: 'honmen',
       examId: '3',
+      locale: undefined,
     });
   });
 
@@ -20,6 +30,7 @@ describe('parseExamRoute', () => {
     expect(parseExamRoute('https://karimen-honmen.com/exam/gentsuki/1')).toEqual({
       examType: 'gentsuki',
       examId: '1',
+      locale: undefined,
     });
   });
 

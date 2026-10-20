@@ -21,7 +21,8 @@ interface RawQuestion {
 }
 
 function buildUrl(route: ExamRoute): string {
-  return `/${route.examType}/exams/${route.examId}/exam.json`;
+  const prefix = route.locale ? `/${route.locale}` : '';
+  return `${prefix}/exam/${route.examType}/${route.examId}/exam.json`;
 }
 
 function mapRecord(raw: RawQuestion): QuestionRecord {
