@@ -6,8 +6,10 @@ import { buildCards } from '../cardBuilder';
 import { ensureAnkiSetup } from '../ankiSetup';
 import { syncCards } from '../syncCards';
 import { exportTsv } from '../exportTsv';
+import { exportMusasiCsv } from './exportMusasiCsv';
 
 export const MUSASI_BUTTON_ID = 'musasi-anki-export-btn';
+export const MUSASI_CSV_BUTTON_ID = 'musasi-csv-download-btn';
 
 function createExportButton(): HTMLButtonElement {
   const btn = document.createElement('button');
@@ -16,6 +18,32 @@ function createExportButton(): HTMLButtonElement {
   btn.className =
     'bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-1 px-3 rounded ml-2';
   return btn;
+}
+
+function createCsvButton(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.id = MUSASI_CSV_BUTTON_ID;
+  btn.textContent = '📄 Download CSV';
+  btn.className =
+    'bg-green-600 hover:bg-green-700 text-white font-semibold py-1 px-3 rounded ml-2';
+  return btn;
+}
+
+export async function runMusasiCsvDownload(btn: HTMLButtonElement): Promise<void> {
+  btn.textContent = '⏳ Preparing…';
+  btn.disabled = true;
+
+  try {
+    const musasiRoute = parseMusasiRoute(location.href);
+    const route = musasiRoute ?? { sessionId: 'unknown', label: 'Musasi Practice' };
+    const musasiQuestions = harvestMusasiQuestions(document);
+    exportMusasiCsv(musasiQuestions, route);
+    btn.textContent = '✅ Downloaded';
+  } catch (err) {
+    btn.textContent = `❌ Error: ${err instanceof Error ? err.message : 'unknown error'}`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 export async function runMusasiPipeline(btn: HTMLButtonElement): Promise<void> {
@@ -106,11 +134,16 @@ export function setupMusasiObserver(): void {
     const btn = createExportButton();
     btn.addEventListener('click', () => void runMusasiPipeline(btn));
 
+    const csvBtn = createCsvButton();
+    csvBtn.addEventListener('click', () => void runMusasiCsvDownload(csvBtn));
+
     const parent = container.parentElement;
     if (parent) {
       parent.insertBefore(btn, container.nextSibling);
+      parent.insertBefore(csvBtn, btn.nextSibling);
     } else {
       container.appendChild(btn);
+      container.appendChild(csvBtn);
     }
 
     observer.disconnect();
