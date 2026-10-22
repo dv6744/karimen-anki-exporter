@@ -6,6 +6,7 @@ const banner = `// ==UserScript==
 // @version      0.1.0
 // @description  Export karimen-honmen.com mock exam results to Anki flashcards via AnkiConnect
 // @match        https://karimen-honmen.com/*
+// @match        https://www.musasi.jp/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @run-at       document-idle
