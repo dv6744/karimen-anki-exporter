@@ -6,6 +6,7 @@ import {
   findNotes,
   addNote,
   addTags,
+  storeMediaFile,
   type ModelSpec,
   type NotePayload,
 } from './ankiConnect';
@@ -231,5 +232,46 @@ describe('addTags', () => {
   it('rejects with AnkiConnect error string', async () => {
     stubGmError('notes not found');
     await expect(addTags([999], 'failed')).rejects.toThrow('notes not found');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// storeMediaFile
+// ---------------------------------------------------------------------------
+
+describe('storeMediaFile', () => {
+  it('resolves with the stored filename on success', async () => {
+    stubGmSuccess('sign.png');
+    await expect(storeMediaFile('sign.png', 'https://karimen-honmen.com/img/sign.png')).resolves.toBe(
+      'sign.png',
+    );
+  });
+
+  it('sends correct params: filename, url, deleteExisting: false', async () => {
+    stubGmSuccess('sign.png');
+    const gmSpy = vi.mocked(GM_xmlhttpRequest);
+    await storeMediaFile('sign.png', 'https://karimen-honmen.com/img/sign.png');
+
+    const body = JSON.parse(gmSpy.mock.calls[0][0].data);
+    expect(body.action).toBe('storeMediaFile');
+    expect(body.params).toEqual({
+      filename: 'sign.png',
+      url: 'https://karimen-honmen.com/img/sign.png',
+      deleteExisting: false,
+    });
+  });
+
+  it('rejects on AnkiConnect error', async () => {
+    stubGmError('file write error');
+    await expect(
+      storeMediaFile('sign.png', 'https://karimen-honmen.com/img/sign.png'),
+    ).rejects.toThrow('file write error');
+  });
+
+  it('rejects on network failure', async () => {
+    stubGmNetworkError();
+    await expect(
+      storeMediaFile('sign.png', 'https://karimen-honmen.com/img/sign.png'),
+    ).rejects.toThrow('Network failure');
   });
 });

@@ -1,10 +1,31 @@
-import { findNotes, addNote, addTags } from './ankiConnect';
+import { findNotes, addNote, addTags, storeMediaFile } from './ankiConnect';
 import type { AnkiCard } from './cardBuilder';
 
 export interface SyncResult {
   added: number;
   updated: number;
   failed: number;
+}
+
+/**
+ * For each image URL in `imageUrls`, calls AnkiConnect's `storeMediaFile`
+ * (which has Anki download the image server-side, avoiding CORS). On success
+ * appends an `<img src="filename">` tag. On failure emits console.warn and
+ * skips that image. Returns the assembled HTML string (empty if no images).
+ */
+async function resolveImageField(imageUrls: string[]): Promise<string> {
+  if (imageUrls.length === 0) return '';
+  const imgTags: string[] = [];
+  for (const url of imageUrls) {
+    const filename = url.split('/').pop() ?? 'image';
+    try {
+      const stored = await storeMediaFile(filename, url);
+      imgTags.push(`<img src="${stored}">`);
+    } catch {
+      console.warn(`[karimen-anki] Failed to store image: ${url}`);
+    }
+  }
+  return imgTags.join('');
 }
 
 const MODEL_NAME = 'Japanese Driving License (Bilingual)';
@@ -59,7 +80,9 @@ export async function syncCards(cards: AnkiCard[]): Promise<SyncResult> {
       const noteIds = await findNotes('UID:' + card.UID);
 
       if (noteIds.length === 0) {
-        // New note path
+        // New note path — resolve images before adding the note so that
+        // storeMediaFile completes before addNote references local filenames.
+        const imageField = await resolveImageField(card.imageUrls);
         const deckName = `Japanese Driving License::${card.Exam_Category}::${card.Exam_Title}`;
         const tags = buildTags(card, true);
         await addNote({
@@ -71,7 +94,7 @@ export async function syncCards(cards: AnkiCard[]): Promise<SyncResult> {
             Exam_Title: card.Exam_Title,
             Question_JA: card.Question_JA,
             Question_EN: card.Question_EN,
-            Image: card.Image,
+            Image: imageField,
             Answer_Symbol: card.Answer_Symbol,
             Answer_Text: card.Answer_Text,
             Explanation_JA: card.Explanation_JA,

@@ -110,3 +110,12 @@ export function addNote(note: NotePayload): Promise<number> {
 export function addTags(noteIds: number[], tags: string): Promise<null> {
   return ankiConnect<null>('addTags', { notes: noteIds, tags });
 }
+
+/**
+ * Stores a media file in Anki's collection by having Anki download it from
+ * `url`. Uses `deleteExisting: false` so repeated exports do not error.
+ * Returns the filename as stored by Anki (typically the same as `filename`).
+ */
+export function storeMediaFile(filename: string, url: string): Promise<string> {
+  return ankiConnect<string>('storeMediaFile', { filename, url, deleteExisting: false });
+}

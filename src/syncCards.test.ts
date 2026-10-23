@@ -6,13 +6,15 @@ vi.mock('./ankiConnect', () => ({
   findNotes: vi.fn(),
   addNote: vi.fn(),
   addTags: vi.fn(),
+  storeMediaFile: vi.fn(),
 }));
 
 const mockFindNotes = vi.mocked(ankiConnect.findNotes);
 const mockAddNote = vi.mocked(ankiConnect.addNote);
 const mockAddTags = vi.mocked(ankiConnect.addTags);
+const mockStoreMediaFile = vi.mocked(ankiConnect.storeMediaFile);
 
-/** A representative card that failed the mock exam. */
+/** A representative card that failed the mock exam (no images). */
 const failedCard = {
   UID: 'q_abc12345',
   Exam_Category: 'Karimen (仮免)',
@@ -20,6 +22,7 @@ const failedCard = {
   Question_JA: 'テスト問題',
   Question_EN: 'Test question',
   Image: '',
+  imageUrls: [] as string[],
   Answer_Symbol: '⭕',
   Answer_Text: 'TRUE (正しい)',
   Explanation_JA: '説明',
@@ -36,8 +39,27 @@ const passedCard = {
   Test_Result: 'Passed',
 };
 
+/** Card with a single image URL. */
+const cardWithImage = {
+  ...failedCard,
+  UID: 'q_img11111',
+  imageUrls: ['https://karimen-honmen.com//img/sign.png'],
+};
+
+/** Card with two image URLs. */
+const cardWithTwoImages = {
+  ...failedCard,
+  UID: 'q_img22222',
+  imageUrls: [
+    'https://karimen-honmen.com//img/sign.png',
+    'https://karimen-honmen.com//img/road.jpg',
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: storeMediaFile succeeds and returns the filename passed to it
+  mockStoreMediaFile.mockImplementation((filename: string) => Promise.resolve(filename));
 });
 
 describe('syncCards', () => {
@@ -182,6 +204,101 @@ describe('syncCards', () => {
       const result = await syncCards([failedCard]);
 
       expect(result).toEqual({ added: 0, updated: 0, failed: 1 });
+    });
+  });
+
+  describe('image handling', () => {
+    it('no images: storeMediaFile is not called and Image field is empty string', async () => {
+      mockFindNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue(11111);
+
+      await syncCards([failedCard]);
+
+      expect(mockStoreMediaFile).not.toHaveBeenCalled();
+      const payload = mockAddNote.mock.calls[0][0];
+      expect(payload.fields.Image).toBe('');
+    });
+
+    it('single image: storeMediaFile is called with filename and URL before addNote', async () => {
+      mockFindNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue(22222);
+      mockStoreMediaFile.mockResolvedValue('sign.png');
+
+      await syncCards([cardWithImage]);
+
+      expect(mockStoreMediaFile).toHaveBeenCalledOnce();
+      expect(mockStoreMediaFile).toHaveBeenCalledWith(
+        'sign.png',
+        'https://karimen-honmen.com//img/sign.png',
+      );
+
+      const payload = mockAddNote.mock.calls[0][0];
+      expect(payload.fields.Image).toBe('<img src="sign.png">');
+    });
+
+    it('multiple images: storeMediaFile called once per image, Image has one <img> per image', async () => {
+      mockFindNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue(33333);
+      mockStoreMediaFile
+        .mockResolvedValueOnce('sign.png')
+        .mockResolvedValueOnce('road.jpg');
+
+      await syncCards([cardWithTwoImages]);
+
+      expect(mockStoreMediaFile).toHaveBeenCalledTimes(2);
+      const payload = mockAddNote.mock.calls[0][0];
+      expect(payload.fields.Image).toBe('<img src="sign.png"><img src="road.jpg">');
+    });
+
+    it('storeMediaFile failure: Image field is empty and export continues (no failed increment)', async () => {
+      mockFindNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue(44444);
+      mockStoreMediaFile.mockRejectedValue(new Error('network error'));
+
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const result = await syncCards([cardWithImage]);
+
+      expect(result).toEqual({ added: 1, updated: 0, failed: 0 });
+      const payload = mockAddNote.mock.calls[0][0];
+      expect(payload.fields.Image).toBe('');
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0][0]).toContain('https://karimen-honmen.com//img/sign.png');
+
+      warnSpy.mockRestore();
+    });
+
+    it('storeMediaFile uses deleteExisting:false so repeated exports do not error', async () => {
+      mockFindNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue(55555);
+      // storeMediaFile mock already returns filename; just verify the call
+      await syncCards([cardWithImage]);
+      // The actual deleteExisting param is set inside ankiConnect.ts; here we
+      // verify the wrapper was called (the unit test in ankiConnect.test.ts
+      // verifies the param value).
+      expect(mockStoreMediaFile).toHaveBeenCalledWith(
+        'sign.png',
+        'https://karimen-honmen.com//img/sign.png',
+      );
+    });
+
+    it('filename is last path segment of the URL', async () => {
+      mockFindNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue(66666);
+      mockStoreMediaFile.mockResolvedValue('road.jpg');
+
+      const cardDeepPath = {
+        ...failedCard,
+        UID: 'q_deep99999',
+        imageUrls: ['https://karimen-honmen.com/assets/images/road.jpg'],
+      };
+
+      await syncCards([cardDeepPath]);
+
+      expect(mockStoreMediaFile).toHaveBeenCalledWith(
+        'road.jpg',
+        'https://karimen-honmen.com/assets/images/road.jpg',
+      );
     });
   });
 });

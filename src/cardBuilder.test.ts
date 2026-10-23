@@ -123,27 +123,53 @@ describe('Exam_Title', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Image field tests
+// Image field / imageUrls tests
 // ---------------------------------------------------------------------------
 
 describe('Image field', () => {
-  it('populated: question with images produces an <img> tag with absolute URL', () => {
+  it('Image is always empty string (assembled by syncCards after storeMediaFile)', () => {
     const [card] = buildCards([Q1], SCORES, ROUTE_KARIMEN);
-    expect(card!.Image).toBe('<img src="https://karimen-honmen.com//img/sign.png">');
-  });
-
-  it('blank: question with empty images array produces empty string', () => {
-    const [card] = buildCards([Q2], SCORES, ROUTE_KARIMEN);
     expect(card!.Image).toBe('');
   });
 
-  it('blank: question with missing images field produces empty string', () => {
+  it('blank: question with empty images array has empty Image and empty imageUrls', () => {
+    const [card] = buildCards([Q2], SCORES, ROUTE_KARIMEN);
+    expect(card!.Image).toBe('');
+    expect(card!.imageUrls).toEqual([]);
+  });
+
+  it('blank: question with missing images field has empty Image and empty imageUrls', () => {
     const qNoImages: QuestionRecord = {
       ...Q1,
       images: [],
     };
     const [card] = buildCards([qNoImages], SCORES, ROUTE_KARIMEN);
     expect(card!.Image).toBe('');
+    expect(card!.imageUrls).toEqual([]);
+  });
+});
+
+describe('imageUrls field', () => {
+  it('single image: imageUrls contains one full https:// URL', () => {
+    const [card] = buildCards([Q1], SCORES, ROUTE_KARIMEN);
+    expect(card!.imageUrls).toEqual(['https://karimen-honmen.com//img/sign.png']);
+  });
+
+  it('multiple images: imageUrls contains one URL per image in order', () => {
+    const qMulti: QuestionRecord = {
+      ...Q1,
+      images: ['/img/sign.png', '/img/road.jpg'],
+    };
+    const [card] = buildCards([qMulti], SCORES, ROUTE_KARIMEN);
+    expect(card!.imageUrls).toEqual([
+      'https://karimen-honmen.com//img/sign.png',
+      'https://karimen-honmen.com//img/road.jpg',
+    ]);
+  });
+
+  it('no images: imageUrls is an empty array', () => {
+    const [card] = buildCards([Q2], SCORES, ROUTE_KARIMEN);
+    expect(card!.imageUrls).toEqual([]);
   });
 });
 
@@ -214,7 +240,8 @@ describe('Full card fixture', () => {
     expect(c.Exam_Title).toBe('Karimen exam no 10');
     expect(c.Question_JA).toBe(Q1.ja);
     expect(c.Question_EN).toBe(Q1.en);
-    expect(c.Image).toBe('<img src="https://karimen-honmen.com//img/sign.png">');
+    expect(c.Image).toBe('');
+    expect(c.imageUrls).toEqual(['https://karimen-honmen.com//img/sign.png']);
     expect(c.Answer_Symbol).toBe('⭕');
     expect(c.Answer_Text).toBe('TRUE (正しい)');
     expect(c.Explanation_JA).toBe(Q1.explanation_ja);

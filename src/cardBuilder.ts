@@ -50,7 +50,13 @@ export interface AnkiCard {
   Exam_Title: string;
   Question_JA: string;
   Question_EN: string;
+  /** Final HTML for the Anki Image field. Populated by syncCards after
+   *  storeMediaFile resolves image URLs to local filenames. Empty string
+   *  when there are no images. */
   Image: string;
+  /** Full https:// URLs of all images for this question. syncCards uses these
+   *  to call storeMediaFile and then assembles the Image field. */
+  imageUrls: string[];
   Answer_Symbol: string;
   Answer_Text: string;
   Explanation_JA: string;
@@ -90,11 +96,12 @@ export function buildCards(
   return questions.map((q) => {
     const uid = buildUid(q.ja);
 
-    // Image: full absolute URL wrapped in an <img> tag, or empty string
-    const image =
-      q.images && q.images.length > 0
-        ? `<img src="https://karimen-honmen.com/${q.images[0]}">`
-        : '';
+    // imageUrls: full https:// URLs for all images on this question.
+    // Image field is left empty here; syncCards assembles it after calling
+    // storeMediaFile to place images into Anki's local media collection.
+    const imageUrls = (q.images ?? []).map(
+      (path) => `https://karimen-honmen.com/${path}`,
+    );
 
     // Correct answer fields
     const answerSymbol = q.correct ? '⭕' : '❌';
@@ -115,7 +122,8 @@ export function buildCards(
       Exam_Title: examTitle,
       Question_JA: q.ja,
       Question_EN: q.en,
-      Image: image,
+      Image: '',
+      imageUrls,
       Answer_Symbol: answerSymbol,
       Answer_Text: answerText,
       Explanation_JA: q.explanation_ja,
