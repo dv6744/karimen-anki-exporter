@@ -1,4 +1,4 @@
-import { findNotes, addNote, addTags, storeMediaFile } from './ankiConnect';
+import { findNotes, addNote, addTags, storeMediaFileData, fetchImageAsBase64 } from './ankiConnect';
 import type { AnkiCard } from './cardBuilder';
 
 export interface SyncResult {
@@ -8,10 +8,11 @@ export interface SyncResult {
 }
 
 /**
- * For each image URL in `imageUrls`, calls AnkiConnect's `storeMediaFile`
- * (which has Anki download the image server-side, avoiding CORS). On success
- * appends an `<img src="filename">` tag. On failure emits console.warn and
- * skips that image. Returns the assembled HTML string (empty if no images).
+ * For each image URL in `imageUrls`, fetches the image in-browser via
+ * GM_xmlhttpRequest (which carries full cookies/User-Agent) and stores it in
+ * Anki's media collection as base64. On success appends an `<img src="filename">`
+ * tag. On failure emits console.warn and skips that image. Returns the
+ * assembled HTML string (empty if no images).
  */
 async function resolveImageField(imageUrls: string[]): Promise<string> {
   if (imageUrls.length === 0) return '';
@@ -19,7 +20,8 @@ async function resolveImageField(imageUrls: string[]): Promise<string> {
   for (const url of imageUrls) {
     const filename = url.split('/').pop() ?? 'image';
     try {
-      const stored = await storeMediaFile(filename, url);
+      const base64Data = await fetchImageAsBase64(url);
+      const stored = await storeMediaFileData(filename, base64Data);
       imgTags.push(`<img src="${stored}">`);
     } catch {
       console.warn(`[karimen-anki] Failed to store image: ${url}`);

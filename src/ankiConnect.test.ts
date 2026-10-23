@@ -7,6 +7,8 @@ import {
   addNote,
   addTags,
   storeMediaFile,
+  storeMediaFileData,
+  fetchImageAsBase64,
   type ModelSpec,
   type NotePayload,
 } from './ankiConnect';
@@ -273,5 +275,122 @@ describe('storeMediaFile', () => {
     await expect(
       storeMediaFile('sign.png', 'https://karimen-honmen.com/img/sign.png'),
     ).rejects.toThrow('Network failure');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// storeMediaFileData
+// ---------------------------------------------------------------------------
+
+describe('storeMediaFileData', () => {
+  it('resolves with the stored filename on success', async () => {
+    stubGmSuccess('sign.png');
+    await expect(storeMediaFileData('sign.png', 'AQID')).resolves.toBe('sign.png');
+  });
+
+  it('sends correct params: filename, data (base64), deleteExisting: false', async () => {
+    stubGmSuccess('sign.png');
+    const gmSpy = vi.mocked(GM_xmlhttpRequest);
+    await storeMediaFileData('sign.png', 'AQID');
+
+    const body = JSON.parse(gmSpy.mock.calls[0][0].data as string);
+    expect(body.action).toBe('storeMediaFile');
+    expect(body.params).toEqual({
+      filename: 'sign.png',
+      data: 'AQID',
+      deleteExisting: false,
+    });
+  });
+
+  it('does NOT include a url key in params', async () => {
+    stubGmSuccess('sign.png');
+    const gmSpy = vi.mocked(GM_xmlhttpRequest);
+    await storeMediaFileData('sign.png', 'AQID');
+
+    const body = JSON.parse(gmSpy.mock.calls[0][0].data as string);
+    expect(body.params).not.toHaveProperty('url');
+  });
+
+  it('rejects on AnkiConnect error', async () => {
+    stubGmError('file write error');
+    await expect(storeMediaFileData('sign.png', 'AQID')).rejects.toThrow('file write error');
+  });
+
+  it('rejects on network failure', async () => {
+    stubGmNetworkError();
+    await expect(storeMediaFileData('sign.png', 'AQID')).rejects.toThrow('Network failure');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchImageAsBase64
+// ---------------------------------------------------------------------------
+
+/** Stubs GM_xmlhttpRequest to call onload with an arraybuffer response. */
+function stubGmArrayBuffer(status: number, contentType: string, buffer: ArrayBuffer): void {
+  vi.stubGlobal(
+    'GM_xmlhttpRequest',
+    vi.fn(({ onload }: { onload: (r: unknown) => void }) => {
+      onload({
+        status,
+        responseHeaders: `content-type: ${contentType}\r\n`,
+        response: buffer,
+        responseText: '',
+      });
+    }),
+  );
+}
+
+describe('fetchImageAsBase64', () => {
+  it('resolves with base64-encoded image data on 200 response', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    stubGmArrayBuffer(200, 'image/png', bytes.buffer);
+
+    const result = await fetchImageAsBase64('https://example.com/img/test.png');
+    // btoa(String.fromCharCode(1, 2, 3)) === 'AQID'
+    expect(result).toBe('AQID');
+  });
+
+  it('sends a GET request with responseType "arraybuffer"', async () => {
+    stubGmArrayBuffer(200, 'image/png', new Uint8Array([1]).buffer);
+    const gmSpy = vi.mocked(GM_xmlhttpRequest);
+
+    await fetchImageAsBase64('https://karimen-honmen.com/img/sign.png');
+
+    const call = gmSpy.mock.calls[0][0];
+    expect(call.url).toBe('https://karimen-honmen.com/img/sign.png');
+    expect(call.method).toBe('GET');
+    expect(call.responseType).toBe('arraybuffer');
+  });
+
+  it('rejects on non-2xx HTTP status', async () => {
+    stubGmArrayBuffer(403, 'image/png', new Uint8Array([]).buffer);
+    await expect(fetchImageAsBase64('https://example.com/img.png')).rejects.toThrow('403');
+  });
+
+  it('rejects on non-image Content-Type', async () => {
+    stubGmArrayBuffer(200, 'text/html', new Uint8Array([1, 2, 3]).buffer);
+    await expect(fetchImageAsBase64('https://example.com/img.png')).rejects.toThrow('text/html');
+  });
+
+  it('rejects on network error (onerror callback)', async () => {
+    stubGmNetworkError();
+    await expect(fetchImageAsBase64('https://example.com/img.png')).rejects.toThrow(
+      'Network failure',
+    );
+  });
+
+  it('handles image/jpeg content-type', async () => {
+    const bytes = new Uint8Array([255, 216, 255]);
+    stubGmArrayBuffer(200, 'image/jpeg', bytes.buffer);
+
+    const result = await fetchImageAsBase64('https://example.com/photo.jpg');
+    expect(result).toBe(btoa(String.fromCharCode(255, 216, 255)));
+  });
+
+  it('handles content-type with additional parameters (e.g. charset)', async () => {
+    stubGmArrayBuffer(200, 'image/png; charset=utf-8', new Uint8Array([1]).buffer);
+    // Should not reject — content-type starts with "image/"
+    await expect(fetchImageAsBase64('https://example.com/img.png')).resolves.toBeDefined();
   });
 });

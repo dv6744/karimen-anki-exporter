@@ -4,13 +4,26 @@ interface AnkiResponse<T> {
   error: string | null;
 }
 
+/** Shape of an onload response from GM_xmlhttpRequest. */
+interface GmResponse {
+  /** Populated for text/JSON requests. */
+  responseText: string;
+  /** Populated when responseType is "arraybuffer". */
+  response?: ArrayBuffer;
+  /** HTTP status code (e.g. 200, 403). */
+  status?: number;
+  /** Raw response headers string (CRLF-separated). */
+  responseHeaders?: string;
+}
+
 /** Parameters for GM_xmlhttpRequest. */
 interface GmRequestDetails {
   url: string;
   method: string;
-  data: string;
+  data?: string;
+  responseType?: string;
   headers?: Record<string, string>;
-  onload: (response: { responseText: string }) => void;
+  onload: (response: GmResponse) => void;
   onerror: (error: unknown) => void;
 }
 
@@ -118,4 +131,68 @@ export function addTags(noteIds: number[], tags: string): Promise<null> {
  */
 export function storeMediaFile(filename: string, url: string): Promise<string> {
   return ankiConnect<string>('storeMediaFile', { filename, url, deleteExisting: false });
+}
+
+/**
+ * Stores a media file in Anki's collection using base64-encoded data.
+ * Uses `deleteExisting: false` so repeated exports do not error.
+ * Returns the filename as stored by Anki.
+ */
+export function storeMediaFileData(filename: string, data: string): Promise<string> {
+  return ankiConnect<string>('storeMediaFile', { filename, data, deleteExisting: false });
+}
+
+/**
+ * Fetches an image via GM_xmlhttpRequest (which runs in the browser context
+ * with full cookies/User-Agent) and returns a base64-encoded string of the
+ * image data. Rejects on non-2xx status, non-image Content-Type, or network
+ * error.
+ */
+export function fetchImageAsBase64(url: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    GM_xmlhttpRequest({
+      url,
+      method: 'GET',
+      responseType: 'arraybuffer',
+      onload(response) {
+        const status = response.status ?? 0;
+        if (status < 200 || status >= 300) {
+          reject(new Error(`Image fetch failed with HTTP ${status}: ${url}`));
+          return;
+        }
+
+        const rawHeaders = response.responseHeaders ?? '';
+        const ctHeader = rawHeaders
+          .split('\r\n')
+          .find(h => h.toLowerCase().startsWith('content-type:'));
+        const contentType = ctHeader ? ctHeader.slice(ctHeader.indexOf(':') + 1).trim() : '';
+        if (!contentType.startsWith('image/')) {
+          reject(
+            new Error(`Expected image content-type but got "${contentType}": ${url}`),
+          );
+          return;
+        }
+
+        const buffer = response.response;
+        if (!buffer) {
+          reject(new Error(`No arraybuffer response for: ${url}`));
+          return;
+        }
+
+        const uint8 = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < uint8.length; i++) {
+          binary += String.fromCharCode(uint8[i]);
+        }
+        resolve(btoa(binary));
+      },
+      onerror(error) {
+        if (error instanceof Error) {
+          reject(error);
+        } else {
+          reject(new Error(`Network error fetching image: ${url}`));
+        }
+      },
+    });
+  });
 }
