@@ -6,14 +6,12 @@ vi.mock('./ankiConnect', () => ({
   findNotes: vi.fn(),
   addNote: vi.fn(),
   addTags: vi.fn(),
-  storeMediaFileData: vi.fn(),
   fetchImageAsBase64: vi.fn(),
 }));
 
 const mockFindNotes = vi.mocked(ankiConnect.findNotes);
 const mockAddNote = vi.mocked(ankiConnect.addNote);
 const mockAddTags = vi.mocked(ankiConnect.addTags);
-const mockStoreMediaFileData = vi.mocked(ankiConnect.storeMediaFileData);
 const mockFetchImageAsBase64 = vi.mocked(ankiConnect.fetchImageAsBase64);
 
 /** A representative card that failed the mock exam (no images). */
@@ -60,10 +58,8 @@ const cardWithTwoImages = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Default: fetchImageAsBase64 returns a small base64 payload
-  mockFetchImageAsBase64.mockResolvedValue('AQID');
-  // Default: storeMediaFileData succeeds and returns the filename passed to it
-  mockStoreMediaFileData.mockImplementation((filename: string) => Promise.resolve(filename));
+  // Default: fetchImageAsBase64 returns a small data URI
+  mockFetchImageAsBase64.mockResolvedValue('data:image/jpeg;base64,AQID');
 });
 
 describe('syncCards', () => {
@@ -212,23 +208,21 @@ describe('syncCards', () => {
   });
 
   describe('image handling', () => {
-    it('no images: fetchImageAsBase64 and storeMediaFileData are not called, Image field is empty string', async () => {
+    it('no images: fetchImageAsBase64 is not called, Image field is empty string', async () => {
       mockFindNotes.mockResolvedValue([]);
       mockAddNote.mockResolvedValue(11111);
 
       await syncCards([failedCard]);
 
       expect(mockFetchImageAsBase64).not.toHaveBeenCalled();
-      expect(mockStoreMediaFileData).not.toHaveBeenCalled();
       const payload = mockAddNote.mock.calls[0][0];
       expect(payload.fields.Image).toBe('');
     });
 
-    it('single image: fetches via GM_xmlhttpRequest and stores as base64 before addNote', async () => {
+    it('single image: fetches data URI via fetchImageAsBase64 and embeds in Image field', async () => {
       mockFindNotes.mockResolvedValue([]);
       mockAddNote.mockResolvedValue(22222);
-      mockFetchImageAsBase64.mockResolvedValue('AQID');
-      mockStoreMediaFileData.mockResolvedValue('sign.png');
+      mockFetchImageAsBase64.mockResolvedValue('data:image/png;base64,AQID');
 
       await syncCards([cardWithImage]);
 
@@ -236,29 +230,25 @@ describe('syncCards', () => {
       expect(mockFetchImageAsBase64).toHaveBeenCalledWith(
         'https://karimen-honmen.com//img/sign.png',
       );
-      expect(mockStoreMediaFileData).toHaveBeenCalledOnce();
-      expect(mockStoreMediaFileData).toHaveBeenCalledWith('sign.png', 'AQID');
 
       const payload = mockAddNote.mock.calls[0][0];
-      expect(payload.fields.Image).toBe('<img src="sign.png">');
+      expect(payload.fields.Image).toBe('<img src="data:image/png;base64,AQID">');
     });
 
-    it('multiple images: fetches and stores each image, Image has one <img> per image', async () => {
+    it('multiple images: fetches each image, Image has one <img> per image', async () => {
       mockFindNotes.mockResolvedValue([]);
       mockAddNote.mockResolvedValue(33333);
       mockFetchImageAsBase64
-        .mockResolvedValueOnce('AQID')
-        .mockResolvedValueOnce('BQIE');
-      mockStoreMediaFileData
-        .mockResolvedValueOnce('sign.png')
-        .mockResolvedValueOnce('road.jpg');
+        .mockResolvedValueOnce('data:image/png;base64,AQID')
+        .mockResolvedValueOnce('data:image/jpeg;base64,BQIE');
 
       await syncCards([cardWithTwoImages]);
 
       expect(mockFetchImageAsBase64).toHaveBeenCalledTimes(2);
-      expect(mockStoreMediaFileData).toHaveBeenCalledTimes(2);
       const payload = mockAddNote.mock.calls[0][0];
-      expect(payload.fields.Image).toBe('<img src="sign.png"><img src="road.jpg">');
+      expect(payload.fields.Image).toBe(
+        '<img src="data:image/png;base64,AQID"><img src="data:image/jpeg;base64,BQIE">',
+      );
     });
 
     it('image fetch failure: Image field is empty and export continues (no failed increment)', async () => {
@@ -279,41 +269,10 @@ describe('syncCards', () => {
       warnSpy.mockRestore();
     });
 
-    it('storeMediaFileData failure: Image field is empty and export continues (no failed increment)', async () => {
-      mockFindNotes.mockResolvedValue([]);
-      mockAddNote.mockResolvedValue(44445);
-      mockFetchImageAsBase64.mockResolvedValue('AQID');
-      mockStoreMediaFileData.mockRejectedValue(new Error('file write error'));
-
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-      const result = await syncCards([cardWithImage]);
-
-      expect(result).toEqual({ added: 1, updated: 0, failed: 0 });
-      const payload = mockAddNote.mock.calls[0][0];
-      expect(payload.fields.Image).toBe('');
-      expect(warnSpy).toHaveBeenCalledOnce();
-      expect(warnSpy.mock.calls[0][0]).toContain('https://karimen-honmen.com//img/sign.png');
-
-      warnSpy.mockRestore();
-    });
-
-    it('storeMediaFileData is called with base64 data (deleteExisting:false verified in ankiConnect.test.ts)', async () => {
-      mockFindNotes.mockResolvedValue([]);
-      mockAddNote.mockResolvedValue(55555);
-      mockFetchImageAsBase64.mockResolvedValue('AQID');
-
-      await syncCards([cardWithImage]);
-
-      // Verify storeMediaFileData was called with the base64 payload from fetchImageAsBase64
-      expect(mockStoreMediaFileData).toHaveBeenCalledWith('sign.png', 'AQID');
-    });
-
-    it('filename is last path segment of the URL', async () => {
+    it('Image field uses data URI from fetchImageAsBase64 (URL is passed correctly)', async () => {
       mockFindNotes.mockResolvedValue([]);
       mockAddNote.mockResolvedValue(66666);
-      mockFetchImageAsBase64.mockResolvedValue('AQID');
-      mockStoreMediaFileData.mockResolvedValue('road.jpg');
+      mockFetchImageAsBase64.mockResolvedValue('data:image/jpeg;base64,AQID');
 
       const cardDeepPath = {
         ...failedCard,
@@ -326,7 +285,8 @@ describe('syncCards', () => {
       expect(mockFetchImageAsBase64).toHaveBeenCalledWith(
         'https://karimen-honmen.com/assets/images/road.jpg',
       );
-      expect(mockStoreMediaFileData).toHaveBeenCalledWith('road.jpg', 'AQID');
+      const payload = mockAddNote.mock.calls[0][0];
+      expect(payload.fields.Image).toBe('<img src="data:image/jpeg;base64,AQID">');
     });
   });
 });

@@ -9,6 +9,7 @@ import {
   storeMediaFile,
   storeMediaFileData,
   fetchImageAsBase64,
+  mimeFromUrl,
   type ModelSpec,
   type NotePayload,
 } from './ankiConnect';
@@ -342,13 +343,13 @@ function stubGmArrayBuffer(status: number, contentType: string, buffer: ArrayBuf
 }
 
 describe('fetchImageAsBase64', () => {
-  it('resolves with base64-encoded image data on 200 response', async () => {
+  it('resolves with a data URI on 200 response', async () => {
     const bytes = new Uint8Array([1, 2, 3]);
     stubGmArrayBuffer(200, 'image/png', bytes.buffer);
 
     const result = await fetchImageAsBase64('https://example.com/img/test.png');
     // btoa(String.fromCharCode(1, 2, 3)) === 'AQID'
-    expect(result).toBe('AQID');
+    expect(result).toBe('data:image/png;base64,AQID');
   });
 
   it('sends a GET request with responseType "arraybuffer"', async () => {
@@ -368,9 +369,22 @@ describe('fetchImageAsBase64', () => {
     await expect(fetchImageAsBase64('https://example.com/img.png')).rejects.toThrow('403');
   });
 
-  it('rejects on non-image Content-Type', async () => {
-    stubGmArrayBuffer(200, 'text/html', new Uint8Array([1, 2, 3]).buffer);
-    await expect(fetchImageAsBase64('https://example.com/img.png')).rejects.toThrow('text/html');
+  it('resolves even when responseHeaders is absent (no Content-Type check)', async () => {
+    vi.stubGlobal(
+      'GM_xmlhttpRequest',
+      vi.fn(({ onload }: { onload: (r: unknown) => void }) => {
+        onload({
+          status: 200,
+          // no responseHeaders property
+          response: new Uint8Array([1, 2, 3]).buffer,
+          responseText: '',
+        });
+      }),
+    );
+    // Should not reject — Content-Type check is gone
+    await expect(fetchImageAsBase64('https://example.com/img.jpg')).resolves.toMatch(
+      /^data:image\/jpeg;base64,/,
+    );
   });
 
   it('rejects on network error (onerror callback)', async () => {
@@ -380,17 +394,45 @@ describe('fetchImageAsBase64', () => {
     );
   });
 
-  it('handles image/jpeg content-type', async () => {
+  it('uses mimeFromUrl to determine MIME type in data URI', async () => {
     const bytes = new Uint8Array([255, 216, 255]);
     stubGmArrayBuffer(200, 'image/jpeg', bytes.buffer);
 
     const result = await fetchImageAsBase64('https://example.com/photo.jpg');
-    expect(result).toBe(btoa(String.fromCharCode(255, 216, 255)));
+    expect(result).toMatch(/^data:image\/jpeg;base64,/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mimeFromUrl
+// ---------------------------------------------------------------------------
+
+describe('mimeFromUrl', () => {
+  it('returns image/jpeg for .jpg extension', () => {
+    expect(mimeFromUrl('https://example.com/img/photo.jpg')).toBe('image/jpeg');
   });
 
-  it('handles content-type with additional parameters (e.g. charset)', async () => {
-    stubGmArrayBuffer(200, 'image/png; charset=utf-8', new Uint8Array([1]).buffer);
-    // Should not reject — content-type starts with "image/"
-    await expect(fetchImageAsBase64('https://example.com/img.png')).resolves.toBeDefined();
+  it('returns image/jpeg for .jpeg extension', () => {
+    expect(mimeFromUrl('https://example.com/img/photo.jpeg')).toBe('image/jpeg');
+  });
+
+  it('returns image/png for .png extension', () => {
+    expect(mimeFromUrl('https://example.com/img/image.png')).toBe('image/png');
+  });
+
+  it('returns image/gif for .gif extension', () => {
+    expect(mimeFromUrl('https://example.com/img/anim.gif')).toBe('image/gif');
+  });
+
+  it('returns image/webp for .webp extension', () => {
+    expect(mimeFromUrl('https://example.com/img/image.webp')).toBe('image/webp');
+  });
+
+  it('returns image/jpeg for unknown extension (default)', () => {
+    expect(mimeFromUrl('https://example.com/img/image.bmp')).toBe('image/jpeg');
+  });
+
+  it('strips query string before parsing extension', () => {
+    expect(mimeFromUrl('https://example.com/img/photo.png?v=123&foo=bar')).toBe('image/png');
   });
 });

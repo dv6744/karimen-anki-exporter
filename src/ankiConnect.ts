@@ -143,10 +143,34 @@ export function storeMediaFileData(filename: string, data: string): Promise<stri
 }
 
 /**
+ * Derives a MIME type string from the file extension in a URL pathname.
+ * Strips any query string before inspecting the extension.
+ * Falls back to `image/jpeg` for unrecognised extensions.
+ */
+export function mimeFromUrl(url: string): string {
+  const pathname = url.split('?')[0];
+  const ext = pathname.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    default:
+      return 'image/jpeg';
+  }
+}
+
+/**
  * Fetches an image via GM_xmlhttpRequest (which runs in the browser context
- * with full cookies/User-Agent) and returns a base64-encoded string of the
- * image data. Rejects on non-2xx status, non-image Content-Type, or network
- * error.
+ * with full cookies/User-Agent) and returns a full data URI string of the form
+ * `data:<mime>;base64,<base64data>`. Rejects on non-2xx status or network
+ * error. No Content-Type check is performed — the MIME type is derived from
+ * the URL extension via `mimeFromUrl`.
  */
 export function fetchImageAsBase64(url: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
@@ -161,18 +185,6 @@ export function fetchImageAsBase64(url: string): Promise<string> {
           return;
         }
 
-        const rawHeaders = response.responseHeaders ?? '';
-        const ctHeader = rawHeaders
-          .split('\r\n')
-          .find(h => h.toLowerCase().startsWith('content-type:'));
-        const contentType = ctHeader ? ctHeader.slice(ctHeader.indexOf(':') + 1).trim() : '';
-        if (!contentType.startsWith('image/')) {
-          reject(
-            new Error(`Expected image content-type but got "${contentType}": ${url}`),
-          );
-          return;
-        }
-
         const buffer = response.response;
         if (!buffer) {
           reject(new Error(`No arraybuffer response for: ${url}`));
@@ -184,7 +196,8 @@ export function fetchImageAsBase64(url: string): Promise<string> {
         for (let i = 0; i < uint8.length; i++) {
           binary += String.fromCharCode(uint8[i]);
         }
-        resolve(btoa(binary));
+        const mime = mimeFromUrl(url);
+        resolve(`data:${mime};base64,${btoa(binary)}`);
       },
       onerror(error) {
         if (error instanceof Error) {
